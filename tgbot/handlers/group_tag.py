@@ -7,14 +7,6 @@ from tgbot.database.declaration import User, Pleenum, Member, Session, engine
 from tgbot.database.declaration import USERNAME_MAXLENGTH, PLEENUMNAME_MAXLENGTH
 
 
-"""
-    chat_id = str(message.chat["id"]), 
-    user_id = str(message.from_id),
-    user_name = message.from_user.first_name,
-    pleenum_name = message.get_args()
-"""
-
-
 MAX_PLEENUMS = 3
 
 
@@ -26,7 +18,7 @@ async def pleenum_create(chat_id, user_id, user_name, pleenum_name) -> str:
     # Pleenum exists
     if local_session.query(Pleenum).filter(Pleenum.name==pleenum_name, Pleenum.chat_id==chat_id).first():
         logging.error("Pleenum exists")
-        return "Pleenum with this name already exists in this chat"
+        return f"Pleenum <code>{pleenum_name}</code> already exists in this chat"
     # Overusage
     elif user and user.pleenums_created >= MAX_PLEENUMS:
         logging.error("Max amount reached for this user")
@@ -41,8 +33,7 @@ async def pleenum_create(chat_id, user_id, user_name, pleenum_name) -> str:
     if not user:
         local_session.add(User(
             telegram_id = user_id, 
-            user_name = user_name[:USERNAME_MAXLENGTH], 
-            pleenums_created = 0
+            user_name = user_name[:USERNAME_MAXLENGTH]
         ))
     # Adding pleenum to db
     pleenum = Pleenum(
@@ -60,11 +51,12 @@ async def pleenum_create(chat_id, user_id, user_name, pleenum_name) -> str:
     ))
     # Updating pleenum amount
     local_session.query(User).filter(User.telegram_id==user_id).first().pleenums_created += 1
+
     # Committing
     local_session.commit()
     # Reporting successful creation
     logging.info("Success!")
-    return "Pleenum was created"
+    return f"Pleenum <code>{pleenum_name}</code> was created"
 
 
 async def pleenum_remove(chat_id, user_id, pleenum_name) -> str:
@@ -80,7 +72,7 @@ async def pleenum_remove(chat_id, user_id, pleenum_name) -> str:
     # Requestor is not the creator
     elif not user or pleenum.creator_id != user_id:
         logging.error("Not the creator")
-        return "You are not the creator of this pleenum"
+        return f"You are not the creator of <code>{pleenum_name}</code>"
 
     # Check passed - pleenum can be removed
     # Removing all membership records
@@ -90,15 +82,17 @@ async def pleenum_remove(chat_id, user_id, pleenum_name) -> str:
     local_session.delete(pleenum)
     # Updating pleenum amount
     user.pleenums_created -= 1
+
     # Garbage collection - user (will obviously reset username after recreation)
     if user.pleenums_created == 0 and not local_session.query(Member).filter(Member.member_id==user_id).all():
         local_session.delete(user)
         logging.info("User is removed after deleting their last record")
+
     # Committing
     local_session.commit()
     # Reporting successful creation
     logging.info("Success!")
-    return "Pleenum was removed"
+    return f"Pleenum <code>{pleenum_name}</code> was removed"
 
 
 async def pleenum_join(chat_id, user_id, user_name, pleenum_name) -> str:
@@ -110,11 +104,11 @@ async def pleenum_join(chat_id, user_id, user_name, pleenum_name) -> str:
     # Pleenum not found
     if not pleenum:
         logging.error("Not found")
-        return "Pleenum with this name doesn't exist. Go ahead, create one!"
+        return f"Pleenum <code>{pleenum_name}</code> doesn't exist. Go ahead, create one!"
     # User is a member already
     if local_session.query(Member).filter(Member.pleenum_id==pleenum.id, Member.member_id==user_id).first():
         logging.error("Already joined")
-        return "You are already a member of this pleenum"
+        return f"You are already a member of <code>{pleenum_name}</code>"
 
     # Check passed - pleenum can be joined
     # If user unrecognized - adding to db
@@ -129,11 +123,12 @@ async def pleenum_join(chat_id, user_id, user_name, pleenum_name) -> str:
         pleenum_id = pleenum.id,
         member_id = user_id
     ))
+
     # Committing
     local_session.commit()
     # Reporting successful creation
     logging.info("Success!")
-    return "Pleenum was joined"
+    return f"Pleenum <code>{pleenum_name}</code> was joined"
 
 
 async def pleenum_leave(chat_id, user_id, pleenum_name) -> str:
@@ -146,15 +141,16 @@ async def pleenum_leave(chat_id, user_id, pleenum_name) -> str:
     # Pleenum not found
     if not pleenum:
         logging.error("Not found")
-        return "Pleenum with this name doesn't exist"
+        return f"Pleenum <code>{pleenum_name}</code> doesn't exist"
     # User is not a member
     elif not user or not membership:
         logging.error("Was not a member")
-        return "You were not a member of this pleenum to begin with"
+        return f"You were not a member of <code>{pleenum_name}</code> to begin with"
     
     # Check passed - pleenum can be left
     # Removing membership record
     local_session.delete(membership)
+
     # Garbage collection - pleenum
     if not local_session.query(Member).filter(Member.pleenum_id==pleenum.id).all():
         local_session.query(User).filter(User.telegram_id==pleenum.creator_id).first().pleenums_created -= 1
@@ -164,11 +160,12 @@ async def pleenum_leave(chat_id, user_id, pleenum_name) -> str:
     if user.pleenums_created == 0 and not local_session.query(Member).filter(Member.member_id==user_id).all():
         local_session.delete(user)
         logging.info("User is removed after deleting their last record")
+    
     # Committing
     local_session.commit()
     # Reporting successful creation
     logging.info("Success!")
-    return "Pleenum was left"
+    return f"Pleenum <code>{pleenum_name}</code> was left"
 
 
 async def pleenum_call(chat_id, user_id, pleenum_name) -> str:
@@ -178,29 +175,58 @@ async def pleenum_call(chat_id, user_id, pleenum_name) -> str:
     # Check for pleenum
     if not pleenum:
         logging.error("Not found")
-        return "Pleenum with this name doesn't exist"
+        return f"Pleenum <code>{pleenum_name}</code> doesn't exist"
     
     members = [each.member_id for each in local_session.query(Member).filter(Member.pleenum_id==pleenum.id).all()]
     logging.warning(members)
     users = local_session.query(User).filter(User.telegram_id.in_(members)).all()
-    logging.warning(users) # <a href="tg://user?id={each.telegram_id}">{each.user_name}</a>
-    return 'Calling pleenum: ' + ', '.join([f'<a href="tg://user?id={each.telegram_id}">{each.user_name}</a>' for each in users])
+    logging.warning(users)
+    return f'Calling pleenum <code>{pleenum_name}</code>: ' + ', '.join([f'<a href="tg://user?id={each.telegram_id}">{each.user_name}</a>' for each in users])
 
 
-# TODO later and add changing username functionality
-# async def pleenum_rename(chat_id, user_id, pleenum_name, new_name) -> str:
-#     with open("tgbot/misc/pleenums.json", 'r') as f:
-#         pleenums = json.load(f)
-#     if chat_id not in pleenums['pleenums'] or pleenum_name not in pleenums['pleenums'][chat_id] or pleenums['pleenums'][chat_id][pleenum_name]['leader'] != user_id:
-#         status = f"Can't rename pleenum {pleenum_name}"
-#     else:
-#         logging.info(f'Pleenum {pleenum_name} exists')
-#         del pleenums['pleenums'][chat_id][pleenum_name]
-#         pleenums['usage'][user_id] -= 1
-#         status = f"Pleenum {pleenum_name} removed"
-#         with open("tgbot/misc/pleenums.json", 'w') as f:
-#             json.dump(pleenums, f, indent=4)
-#     return status
+async def pleenum_change_nickname(user_id, new_nick):
+    local_session = Session(bind=engine)
+    logging.info(f"User (ID:{user_id}) has requested to change nickname to {new_nick}")
+    user = local_session.query(User).filter(User.telegram_id==user_id).first()
+    # Check if user is active
+    if user.pleenums_created == 0 and not local_session.query(Member).filter(Member.member_id==user_id).all():
+        local_session.delete(user)
+        logging.info("User is not recorded in DB")
+        return "Create or join any pleenum first"
+    
+    # Changing nickname
+    user.user_name = new_nick[:USERNAME_MAXLENGTH]
+
+    # Committing
+    local_session.commit()
+    # Reporting successful creation
+    logging.info("Success!")
+    return "Nickname was changed"
+
+
+async def pleenum_rename(chat_id, user_id, old_name, new_name):
+    local_session = Session(bind=engine)
+    logging.info(f"User (ID:{user_id}) has requested to change pleenum {old_name} to {new_name} in chat {chat_id}")
+    pleenum = local_session.query(Pleenum).filter(Pleenum.name==old_name, Pleenum.chat_id==chat_id).first()
+    user = local_session.query(User).filter(User.telegram_id==user_id).first()
+    # Renaming ability check
+    # Pleenum not found
+    if not pleenum:
+        logging.error("Not found")
+        return "This is not the pleenum you are looking for"
+    # Requestor is not the creator
+    elif not user or pleenum.creator_id != user_id:
+        logging.error("Not the creator")
+        return f"You are not the creator of <code>{old_name}</code>"
+    
+    # Changing name
+    pleenum.name = new_name
+
+    # Committing
+    local_session.commit()
+    # Reporting successful creation
+    logging.info("Success!")
+    return f"Pleenum was renamed to <code>{new_name}</code>"
 
 
 async def pleenum_default(message: types.Message, state: FSMContext):
@@ -212,36 +238,101 @@ async def pleenum_default(message: types.Message, state: FSMContext):
 
 async def choose_action(message: types.Message, state: FSMContext):
     command = message.text.lower()
-    if command not in ['create', 'remove', 'join', 'leave', 'call']:
-        await message.answer('Command unrecognized')
-        await state.reset_state()
-    else:
+    if command in ['create', 'remove', 'join', 'leave', 'call', 'newnick']:
         await state.update_data(command=command)
         await TurnBased.Command.set()
         await message.answer(
-            'Enter the pleenum name'
+            'Enter your new nickname' if command == 'newnick' else 'Enter the pleenum name'
         )
+    elif command == 'rename':
+        pass
+    else:
+        await message.answer('Command unrecognized')
+        await state.reset_state()
 
 
 async def perform_action(message: types.Message, state: FSMContext):
-    command = await state.get_data()
-    command = command['command']
+    state_data = await state.get_data()
+    command = state_data['command']
     chat_id = message.chat["id"]
     user_id = message.from_id
     user_name = message.from_user.first_name
-    pleenum_name = message.text
+    name_from_text = message.text
 
     if command == 'create':
-        await message.answer(await pleenum_create(chat_id, user_id, user_name, pleenum_name))
+        await message.answer(await pleenum_create(
+            chat_id = chat_id, 
+            user_id = user_id, 
+            user_name = user_name, 
+            pleenum_name = name_from_text
+        ))
+        await state.reset_state()
     elif command == 'remove':
-        await message.answer(await pleenum_remove(chat_id, user_id, pleenum_name))
+        await message.answer(await pleenum_remove(
+            chat_id = chat_id, 
+            user_id = user_id, 
+            pleenum_name = name_from_text
+        ))
+        await state.reset_state()
     elif command == 'join':
-        await message.answer(await pleenum_join(chat_id, user_id, user_name, pleenum_name))
+        await message.answer(await pleenum_join(
+            chat_id = chat_id, 
+            user_id = user_id, 
+            user_name = user_name, 
+            pleenum_name = name_from_text
+        ))
+        await state.reset_state()
     elif command == 'leave':
-        await message.answer(await pleenum_leave(chat_id, user_id, pleenum_name))
+        await message.answer(await pleenum_leave(
+            chat_id = chat_id, 
+            user_id = user_id, 
+            pleenum_name = name_from_text
+        ))
+        await state.reset_state()
     elif command == 'call':
-        await message.answer(await pleenum_call(chat_id, user_id, pleenum_name))
+        await message.answer(await pleenum_call(
+            chat_id = chat_id, 
+            user_id = user_id, 
+            pleenum_name = name_from_text
+        ))
+        await state.reset_state()
+    elif command == 'newnick':
+        await message.answer(await pleenum_change_nickname(
+            user_id = user_id, 
+            new_nick = name_from_text
+        ))
+        await state.reset_state()
+    elif command == 'rename':
+        await message.answer('Enter new name')
+        await state.update_data(
+            chat_id = chat_id, 
+            user_id = user_id, 
+            old_name = name_from_text
+        )
+        await TurnBased.NewName.set()
+
+
+async def perform_rename(message: types.Message, state: FSMContext):
+    state_data = await state.get_data()
+    await message.answer(await pleenum_rename(
+        chat_id = state_data['chat_id'],
+        user_id = state_data['user_id'],
+        old_name = state_data['old_name'],
+        new_name = message.text
+    ))
     await state.reset_state()
+
+
+async def rename(message: types.Message, state: FSMContext):
+    # Dunno if useful \|/
+    await TurnBased.Name.set()
+    await message.answer('Enter new name')
+    await state.update_data(
+        chat_id=message.chat["id"], 
+        user_id=message.from_id, 
+        old_name=message.get_args()
+    )
+    await TurnBased.NewName.set()
 
 
 async def create(message: types.Message):
@@ -270,10 +361,29 @@ async def join(message: types.Message):
     ))
 
 
+# Admin function
+async def add(message: types.Message): 
+    await message.answer(await pleenum_join(
+        chat_id = message.chat["id"], 
+        user_id = message.reply_to_message.from_id,
+        user_name = message.reply_to_message.from_user.first_name,
+        pleenum_name = message.get_args()
+    ))
+
+
 async def leave(message: types.Message):
     await message.answer(await pleenum_leave(
         chat_id = message.chat["id"], 
         user_id = message.from_id,
+        pleenum_name = message.get_args()
+    ))
+
+
+# Admin function
+async def purge(message: types.Message):
+    await message.answer(await pleenum_leave(
+        chat_id = message.chat["id"], 
+        user_id = message.reply_to_message.from_id,
         pleenum_name = message.get_args()
     ))
 
@@ -286,12 +396,24 @@ async def call(message: types.Message):
     ))
 
 
+async def change_nickname(message: types.Message):
+    await message.answer(await pleenum_change_nickname(
+        user_id = message.from_id,
+        new_nick = message.get_args()
+    ))
+
+
 def register_group_tag(dp: Dispatcher):
     dp.register_message_handler(pleenum_default, commands=['pleenum'])
     dp.register_message_handler(choose_action, state=TurnBased.Index)
     dp.register_message_handler(perform_action, state=TurnBased.Command)
+    dp.register_message_handler(perform_rename, state=TurnBased.NewName)
     dp.register_message_handler(create, commands=['create'])
     dp.register_message_handler(remove, commands=['remove'])
     dp.register_message_handler(join, commands=['join'])
+    dp.register_message_handler(add, commands=['add'], is_admin=True)
     dp.register_message_handler(leave, commands=['leave'])
+    dp.register_message_handler(purge, commands=['purge'], is_admin=True)
     dp.register_message_handler(call, commands=['call'])
+    dp.register_message_handler(rename, commands=['rename'])
+    dp.register_message_handler(change_nickname, commands=['newnick'])
